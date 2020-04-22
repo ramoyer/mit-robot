@@ -1,3 +1,8 @@
+/* Code for 2.007 (Design and Manufacturing II) robot.
+ * Autonomous operation: Drives forward, finds a game board edge, spins a "turbine"
+ * Manual operation: RC control engages for the rest of the match.
+ * More information available at https://ramoyer.com/2017/05/Design-And-Manufacturing-1.html
+*/
 #include <QTRSensors.h>
 #include <SoftwareServo.h>
 
@@ -13,14 +18,11 @@
 #define T_3 4000// MCM ramp up time
 #define T_4 15000// Full power time at turbine
 #define T_5 150 // Back up time to release from turbines
-#define SIDE 1     // TENTATIVE: Right side of board: -1  Left side of board: 1   
 #define LED_PIN 13 //Set 13 as LED_PIN
 
 #define NUMBER_OF_SENSORS 1
 #define IR_HIGH 600// Calibrated min value
 #define IR_LOW 20// Calibrated max value
-#define FORWARD 169  //1260
-#define REVERSE 11 //1760
 #define AFORWARD 65// Autonomous forward speed in degrees
 #define AREVERSE 113// Autonomous reverse speed in degrees
 #define TFORWARD 78// Turbine spinning forward speed (76,8 gives slight right towards end)
@@ -92,24 +94,20 @@ void loop() {
   // Travel forwards to edge
   for(int i = 0; i < 50; i++){
     SoftwareServo::refresh();
-    servoR.write(AFORWARD-C);//REMOVED -3
-    servoL.write(AFORWARD+C);// removed +3
+    servoR.write(AFORWARD-C);
+    servoL.write(AFORWARD+C);
     delay(T_1/50);
   }
   
-  
+  // Follow edge
   while(counter*EDGE_FOLLOW_DELAY < T_2){
-    //Serial.println("Dunno what I'm doing, but I SHOULD be running the wheels!!!");
     old_delta = delta;
     qtr.read(sensors,readMode);  // sensors[0] = value of sensor 0 between 1 and 4000, raw data
 
-    // This last section added late.  Delete if needed.  Sets sensor value to the expected range if the value is below expected.
+    //  Constrain sensor values
     if(sensors[0]< IR_LOW){
       sensors[0] = IR_LOW; 
     }
-    //Serial.println(sensors[0]);
-    
-
     
     delta = map(sensors[0],IR_LOW,IR_HIGH,-K,K);
   
@@ -121,32 +119,32 @@ void loop() {
     }
 
     if(abs(k)>3){
-      k = 2;
+      k = 2;     // Constrain turn rate
     }
 
-    
-    
+    // Write speeds to wheel motors
     SoftwareServo::refresh();
     servoR.write(int(AFORWARD-C+k*delta));
     servoL.write(int(AFORWARD+C-k*delta));
     delay(EDGE_FOLLOW_DELAY);
     counter++;
-    //digitalWrite(LED_PIN,HIGH);
+    // Output for debugging connection
     Serial.println(delta);
     Serial.println(k);
   }
 
+
+
   // Spin Turbine: 
-  
   for(int i = 50; i < 100; i++){
-    analogWrite(MCM_OUT,2.55*i);
+    analogWrite(MCM_OUT,2.55*i);// Ramp up turbine drive slowly
     SoftwareServo::refresh();
     servoR.write(TFORWARD+DIFFERENTIAL);// Left servo should be going faster, but motors are mounted "backwards"
     servoL.write(TFORWARD-DIFFERENTIAL);
     delay(T_3/50);
   }
   
-  //delay(T_4);
+  // Turbine drive at full power, hold platform steady
   analogWrite(MCM_OUT,255);
   for(int i = 1; i < 100; i++){
     SoftwareServo::refresh();
@@ -154,10 +152,12 @@ void loop() {
     servoL.write(TFORWARD-DIFFERENTIAL);
     delay((T_4)/100);
   }
+
+  // Turbine startup complete, reverse to disengage
   for(int i = 0; i < 50; i++){
     SoftwareServo::refresh();
-    servoL.write(AREVERSE);     // set servo to forward.  
-    servoR.write(AREVERSE);    // set servo to mid-point
+    servoL.write(AREVERSE);      
+    servoR.write(AREVERSE);    
     delay(T_5/50);
   }
   
@@ -183,11 +183,5 @@ void loop() {
     analogWrite(MCM_OUT,duty);
     SoftwareServo::refresh();
     delay(20);
-    //Serial.print("Pulse In: ");
-  //Serial.println(pulse);
-  //Serial.print("Duty: ");
-  //Serial.println(duty);
-  
   }
-  
 }
